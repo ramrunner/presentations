@@ -1,0 +1,241 @@
+Understanding Routing Protocols
+for fun and profit...
+Tags: routing, colostate, bgp, ospf, rip
+
+Spiros Thanasoulas
+research scholar, Colorado State University
+dsp@2f30.org
+http://www.2f30.org
+
+* Networking at the OS level (I)
+browser wants to connect to www.google.com
+- gethostbyname()
+--- /etc/hosts / /etc/resolv.conf / talk to DNS server
+--- ret struct **hostent
+- socket() syscall
+--- AF_INET, SOCK_STREAM
+- connect() syscall
+- success or ENETUNREACH
+
+
+* Networking at the OS level (II)
+still can't create a frame. how to get there?
+.image imgs/osi.gif 400 400
+hopping is a solution. what is my next hop?
+hoping he will fw my IP packet
+
+* Networking at the OS level (III) - RIB
+.image imgs/ribs.jpg 400 400
+?
+
+* Networking at the OS level (III) - RIB corrected
+.code txt/rib
+
+remember just:
+- destination
+- metric
+- next-hop
+
+* Networking at the OS level (IV)
+After a million billion more confusing details, behold, A Frame!
+.image imgs/ethpkt.gif
+
+ethernet frame MAC matches our default GW for the dest.
+
+* Interlude - the need for routing
+.image imgs/imp.jpg 200 200
+- RFC 1 (04/01/69)
+- messages (< than 8080 bits)
+- {Destination}(5bit)x{Link}(8bit)x{Trace}(1 bit)x{spare}(2bit)
+- ARPANet
+- UUCP
+- -- org!2f30!dsp
+- -- humans had to know the routes
+
+* Interlude - the birth of IP
+IPv4 - 32bit
+5 classes for fast packet switching
+.image imgs/cdr.jpg 500 950
+
+* Interlude - the internet around 1982
+.image imgs/old-inet.png 400 400
+
+* Networking at the Internet level (I)
+- variable length subnet masking (VLSM)
+- allows for reduced size of routing tables by aggregation
+.image imgs/cidr.png 400 800
+
+* Networking at the Internet level (II)
+Fast packet switching implications
+- RIBs to FIBs
+- CAM memories
+- -- Binary CAM -> good {0/1} matching, 
+- -- Ternary CAM -> {0/1/?} matching. mask friendly.
+- unicast (1 node), broadcast (all nodes), multicast (multiple nodes) 
+- MAC layer bridging -> associate a MAC with an interface. 
+- MultiProtocol Label Switching -> generic labels for fast frame relaying
+
+* Networking at the Internet level (III) - Autonomous systems
+- Groups of networks operated by one entity and described by a number
+- Assigned numbers by IANA (or Regional Internet Registries)
+AS types
+- multihomed (connects to > 1)
+- stub (connects to 1)
+- transit (provides connections)
+- IXP (helps CDN operations by maintining a single RIB)
+- started as 16 bit, now AS4
+- 2018 -> 84k+, private: 64512 -> 65534, 4200000000 -> 4294967294
+.image imgs/route-growth.png 200 400
+
+* Interlude - the internet around 2015
+.image imgs/internet-as.jpg 560 800
+
+* Networking at Internet level (IV) - BGP
+- Path-Vector protocol (loop free)
+- propagates AS paths for destinations, routing is decided step by step
+- Each entry is : {Destination}x{next-hop}x{AS-path}
+- BGPv4 (RFC1771 (1995)), which obsoleted v3 (RFC1276 (1993)) , which obsoleted EGP (RFC904 (1993)) 
+- --- EGP wasn't path vector, mandated a tree like architecture to avoid loops
+.image imgs/as-bgp-paths.png 280 500
+
+* Networking at Internet level (V) - BGP path selection
+- Routing Policies instead of Path characteristics!
+- they are reflected on BGP path attributes (ASP, next-hop, origin, loc-pref, Aggregator, communities, MED)
+- higher loc-pref is preferred
+brakes ties by
+- shortest AS-path
+- lowest origin attr
+- lowest MED
+- if at this point ties exist look at local RIB and find best metric
+More specific masks are selected and propagated!
+
+
+* Networking at Internet level (VI) - BGP implementation
+- TCP/179, Keepalive timer, Hold timer
+Messages
+
+- Open, Update, Notification, KeepAlive, RouteRefresh
+State Machine
+
+- Idle, Connect, OpenSent, OpenConfirm, Active, Established
+.code txt/bgpmsg
+
+* Networking at the Internet level (VII) - BGP dynamics
+- route flapping
+- --- withdraw/readv storms
+- --- prevents convergence
+- --- route damping (RFC2439) via exponential decay
+- hold timer expirations
+- --- RIB of death
+- QOS
+- --- the you-me-me-me-me pattern
+- --- multihoming ASes MED manipulation
+
+* Networking at the Internet level (VIII) - BGP security
+the internet is based on trust
+Prefix Hijacks
+
+- Announcing prefixes you don't own
+- their propagation can be dynamic, can create split brains
+- more specific wins! /32's win!
+
+Famous cases
+
+- pakistan becomes youtube (2008)
+- australia goes down (2012)
+- game hacks (2017)
+
+* Networking at the Internet level (IIX) - BGP security (cont)
+MITM on the AS level
+AS-Path injections
+
+- fantastic for siphoning traffic
+- country level detours
+- a favorite of 3 letter agencies all over the world!
+
+Famous cases
+
+- UK nuclear prefixes routed through "ukraine" (2013)
+- china telecom tries online banking (2018)
+
+* Networking at the Internet level (IIX) - BGP security (cont)
+Can we monitor at least?
+
+- BGPMon (i need more coders)
+But how hard can it be?
+
+- since 2001 we have collected 21TB (21 * 10^12) of events
+- median message size is 100 bytes (1 * 10^2)
+- 21 * 10^10 events -> 210 billion
+- spread accross different collectors.
+- --- a collector is peering with BGP routers and listening to what they advertise.
+- --- everyone of these different BGP routers has a different view of the internet
+- --- currently 20 collectors ~ approx 350 peers
+- we do our best to utilise geolocation information too (another very hard problem)
+- even displaying that amount of data in a way that makes sense is hard
+
+* Networking at the Internet level (IX) - BGP security (cont)
+Can we fix it?
+
+Resource Public Key Infrastructure for origin validation
+
+-  connects AS/prefix associations to trust anchors
+-  Route Originator Authorizations are distributed as X509 certs
+-  has a maximum prefix length field
+
+BGPSec for path validation
+
+- doesn't just prepend itself to the chain, but creates a cryptographic signature specific to the receiver, of what it added
+- neat... but...
+
+transport security!?
+
+- MD5 sockets... -.-
+
+* Networking at the Intranet level (I) - Link-State / Distance-Vector
+2 main categories of protocols
+Link - State
+
+- every node constructs a map of the network as graph
+- independently calculates the best path
+- forms a routing table from best paths
+
+Distance - Vector
+
+- nodes share their routing tables
+- then find least distances
+- --- might take into account latency etc.
+- update the routing tables
+
+both algorithms can be understood as recursive tree walks on state space
+
+
+* Networking at the Intranet level (II) - OSPF
+
+Open Shortest Path First (Link-State)
+.image imgs/dijkstra.gif
+
+- RFC1131 (1989), sits on top of just IP and sends/receives HELLO packets
+- broadcasts if in a shared net or accepts point2point on wans
+- if broadcasting on the same net , elects a designated and backup to reduce chat.
+- has also a dead timer between HELLOs
+- Maintains 3 tables: Neighbour, Topology, Routing
+- Transmit their Topology tables in the form of Link State advertisements (CIDR-cost)
+- Uses dijkstra O(v^2) to O (v log v+e) if built with a priority queue
+
+
+* Networking at the Intranet level (III) - RIP
+
+- RFC1058 (1988), over UDP/520 every 30 seconds broadcast routing tables
+- everyone calculates hops and updates routing tables
+- slow convergence, traffic bursts, max 15 hops.
+- uses Bellman-Ford O(v*e) since every edge has to be scanned from every other edge.
+- good at detecting negative cycles
+
+* Future of Routing
+
+- SDN implementations
+- --- even more so at CDNs and IXPs (ONOS) 
+
+- Content based networks
+- --- NDN
